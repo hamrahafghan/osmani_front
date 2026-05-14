@@ -1,22 +1,47 @@
+/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 20 14% 4%;
-    --primary: 25 80% 35%;
-    --primary-foreground: 0 0% 100%;
+  body {
+    @apply bg-gray-100;
   }
 }
 
-@layer utilities {
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
+@layer components {
+  .card {
+    @apply bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow;
   }
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  
+  .btn-primary {
+    @apply bg-gradient-to-r from-[#2c5f2d] to-[#1a3a1a] text-white px-6 py-2 rounded-lg font-semibold hover:scale-105 transition;
   }
+  
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition;
+  }
+  
+  .input-field {
+    @apply w-full p-3 border-2 border-gray-200 rounded-xl focus:border-[#2c5f2d] focus:outline-none transition;
+  }
+  
+  .badge {
+    @apply px-2 py-1 rounded-full text-xs font-semibold;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
 }

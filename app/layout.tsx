@@ -1,13 +1,16 @@
+// app/layout.tsx
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Vazirmatn } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
 
-const inter = Inter({ subsets: ["latin"] });
+const vazirmatn = Vazirmatn({
+  subsets: ["arabic", "latin"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "اموال - سیستم محاسبه گمرک خودرو",
-  description: "مشاهده و محاسبه عوارض گمرکی خودروهای سنگین",
+  title: "شرکت تجارتی عثمان عثمانی کاکر لمیتد | سیستم محاسبه مالیات گمرکی",
+  description: "سیستم هوشمند محاسبات مالیات گمرکی افغانستان مبتنی بر ASYCUDA",
 };
 
 export default function RootLayout({
@@ -16,13 +19,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fa" dir="rtl">
-      <body className={inter.className}>
-        <div className="flex min-h-screen bg-white">
-          <Sidebar />
-          <main className="flex-1 mr-72">{children}</main>
-        </div>
-      </body>
+    <html lang="fa">
+      <body className={vazirmatn.className}>{children}</body>
     </html>
   );
 }
