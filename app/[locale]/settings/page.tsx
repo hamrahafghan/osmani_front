@@ -5,7 +5,8 @@ import { useParams } from 'next/navigation';
 import { getCurrentRates, setMonthlyRates } from '@/lib/api';
 import { getTranslation, type Locale } from '@/lib/translations';
 
-const API_URL = 'http://localhost:5000/api';
+// ✅ آدرس بک‌اند آنلاین - اصلاح شده
+const API_URL = 'https://osmani-backend.onrender.com/api';
 
 interface Backup {
   id: string;
