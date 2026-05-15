@@ -1,4 +1,3 @@
-// app/[locale]/browse/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -28,9 +27,9 @@ export default function BrowsePage() {
   const [isLicensed, setIsLicensed] = useState(true);
   const [currentRates, setCurrentRates] = useState<any>(null);
   
-  // مقادیر پیش‌فرض حمل و بیمه (از تنظیمات)
-  const [defaultFreight, setDefaultFreight] = useState(0);
-  const [defaultInsurance, setDefaultInsurance] = useState(0);
+  // مقادیر پیش‌فرض حمل و بیمه
+  const [defaultFreight] = useState(1000);
+  const [defaultInsurance] = useState(100);
 
   // بارگذاری نرخ‌های جاری
   useEffect(() => {
@@ -48,11 +47,15 @@ export default function BrowsePage() {
   // بارگذاری برندها
   useEffect(() => {
     const loadMakes = async () => {
+      setLoadingMakes(true);
       try {
+        console.log('Loading makes...');
         const data = await getMakes();
-        setMakes(data);
-      } catch (error) {
+        console.log('Makes loaded:', data);
+        setMakes(data || []);
+      } catch (error: any) {
         console.error('Error loading makes:', error);
+        setMakes([]);
       } finally {
         setLoadingMakes(false);
       }
@@ -69,9 +72,12 @@ export default function BrowsePage() {
     setLoadingModels(true);
     
     try {
+      console.log('Loading models for make:', make);
       const data = await getModelsByMake(make);
-      setModels(data);
-    } catch (error) {
+      console.log('Models loaded:', data);
+      // اطمینان از اینکه data یک آرایه است
+      setModels(Array.isArray(data) ? data : []);
+    } catch (error: any) {
       console.error('Error loading models:', error);
       setModels([]);
     } finally {
@@ -86,9 +92,11 @@ export default function BrowsePage() {
     setCalculations({});
     
     try {
+      console.log('Loading vehicles for:', selectedMake, model);
       const data = await getVehiclesByMakeAndModel(selectedMake, model);
-      setVehicles(data);
-    } catch (error) {
+      console.log('Vehicles loaded:', data);
+      setVehicles(data || []);
+    } catch (error: any) {
       console.error('Error loading vehicles:', error);
       setVehicles([]);
     } finally {
@@ -96,16 +104,15 @@ export default function BrowsePage() {
     }
   };
 
-  // محاسبه مالیات - همیشه از قیمت دیتابیس استفاده می‌کند
+  // محاسبه مالیات
   const handleCalculate = async (vehicle: Vehicle) => {
     setCalculatingVehicleId(vehicle.variant_id);
     try {
-      // استفاده از price دیتابیس به عنوان ارزش کالا
       const result = await calculateTax(
         vehicle.variant_id,
-        vehicle.price,      // ← قیمت از دیتابیس (اجباری)
-        defaultFreight,     // هزینه حمل پیش‌فرض
-        defaultInsurance,   // هزینه بیمه پیش‌فرض
+        vehicle.price,
+        defaultFreight,
+        defaultInsurance,
         isLicensed
       );
       setCalculations(prev => ({ ...prev, [vehicle.variant_id]: result }));
@@ -117,16 +124,17 @@ export default function BrowsePage() {
     }
   };
 
+  const formatNumber = (num: number) => {
+    if (!num && num !== 0) return '-';
+    return num.toLocaleString(locale === 'fa' ? 'fa-IR' : 'en-US');
+  };
+
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat(locale === 'fa' ? 'fa-AF' : 'en-US', {
       style: 'currency',
       currency: 'AFN',
       minimumFractionDigits: 0
     }).format(amount);
-  };
-
-  const formatNumber = (num: number) => {
-    return num.toLocaleString(locale === 'fa' ? 'fa-IR' : 'en-US');
   };
 
   const formatUSD = (amount: number) => {
