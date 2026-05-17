@@ -1,7 +1,7 @@
-// app/layout.tsx
 import type { Metadata } from "next";
 import { Vazirmatn } from "next/font/google";
 import "./globals.css";
+import '@fortawesome/fontawesome-free/css/all.min.css';
 
 const vazirmatn = Vazirmatn({
   subsets: ["arabic", "latin"],
@@ -19,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fa">
+    <html lang="fa" dir="rtl">
       <body className={vazirmatn.className}>{children}</body>
     </html>
   );

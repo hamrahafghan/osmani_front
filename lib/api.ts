@@ -1,6 +1,6 @@
 // lib/api.ts
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = 'http://localhost:5000/api';
 
 // ============================================
 // موجودیت‌ها (Interfaces)
@@ -63,6 +63,10 @@ export interface RegisteredVehicle {
   code: string;
   tsc_code: string;
   document_count?: number;
+  customer_id?: string;
+  customer_name?: string;
+  status?: string;
+  notes?: string;
   createdAt: string;
 }
 
@@ -74,8 +78,46 @@ export interface VehicleDocument {
   image_url?: string;
   text_content: string;
   uploaded_by?: string;
+  customer_id?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Customer {
+  _id: string;
+  customer_type: 'company' | 'individual';
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  username: string;
+  password?: string;
+  role: 'admin' | 'customer';
+  status: 'pending' | 'active' | 'rejected' | 'blocked';
+  registration_number?: string;
+  tax_number?: string;
+  national_id?: string;
+  father_name?: string;
+  created_at?: string;
+  stats?: {
+    total_vehicles: number;
+    total_declarations: number;
+    active_shipments: number;
+  };
+}
+
+export interface AuthResponse {
+  success: boolean;
+  data: {
+    id: string;
+    name: string;
+    customer_type: string;
+    username: string;
+    role: string;
+    status?: string;
+    token: string;
+  };
+  message?: string;
 }
 
 // ============================================
@@ -188,7 +230,7 @@ export async function getCurrentRates(): Promise<{
   return data.data;
 }
 
-// تنظیم نرخ‌های جدید (برای صفحه تنظیمات)
+// تنظیم نرخ‌های جدید
 export async function setMonthlyRates(rates: {
   usd_to_afn: number;
   brt_rate?: number;
@@ -217,34 +259,6 @@ export async function setMonthlyRates(rates: {
   return data.data;
 }
 
-// دریافت مقادیر پیش‌فرض محاسبات (ارزش، حمل، بیمه)
-export async function getCalculationDefaults(): Promise<{
-  default_value: number;
-  default_freight: number;
-  default_insurance: number;
-}> {
-  const res = await fetch(`${API_BASE_URL}/settings/defaults`);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.message);
-  return data.data;
-}
-
-// به‌روزرسانی مقادیر پیش‌فرض محاسبات
-export async function updateCalculationDefaults(defaults: {
-  default_value: number;
-  default_freight: number;
-  default_insurance: number;
-}): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/settings/defaults`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(defaults)
-  });
-  const data = await res.json();
-  if (!data.success) throw new Error(data.message);
-  return data.data;
-}
-
 // ============================================
 // 3. ثبت اطلاعات گمرکی موتر (Registry)
 // ============================================
@@ -259,6 +273,9 @@ export async function registerVehicle(data: {
   weight: number;
   hs_code: string;
   tsc_code: string;
+  customer_id?: string;
+  customer_name?: string;
+  notes?: string;
   documents: {
     type: string;
     custom_name?: string;
@@ -266,9 +283,13 @@ export async function registerVehicle(data: {
     text_content: string;
   }[];
 }): Promise<any> {
+  const token = localStorage.getItem('customer_token');
   const res = await fetch(`${API_BASE_URL}/registry/register`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
     body: JSON.stringify(data)
   });
   const result = await res.json();
@@ -279,15 +300,23 @@ export async function registerVehicle(data: {
 // دریافت لیست موترهای ثبت شده
 export async function getRegisteredVehicles(params?: { 
   search?: string; 
+  customer_id?: string;
   limit?: number; 
   page?: number 
 }): Promise<{ data: RegisteredVehicle[]; pagination: any }> {
   const searchParams = new URLSearchParams();
   if (params?.search) searchParams.append('search', params.search);
+  if (params?.customer_id) searchParams.append('customer_id', params.customer_id);
   if (params?.limit) searchParams.append('limit', params.limit.toString());
   if (params?.page) searchParams.append('page', params.page.toString());
   
-  const res = await fetch(`${API_BASE_URL}/registry/vehicles?${searchParams}`);
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/registry/vehicles?${searchParams}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
   const data = await res.json();
   if (!data.success) throw new Error(data.message);
   return { data: data.data, pagination: data.pagination };
@@ -299,7 +328,13 @@ export async function getRegisteredVehicleDetail(chassis: string): Promise<{
   documents: any; 
   allDocuments: VehicleDocument[] 
 }> {
-  const res = await fetch(`${API_BASE_URL}/registry/vehicles/${encodeURIComponent(chassis)}`);
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/registry/vehicles/${encodeURIComponent(chassis)}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
   const data = await res.json();
   if (!data.success) throw new Error(data.message);
   return data.data;
@@ -307,39 +342,49 @@ export async function getRegisteredVehicleDetail(chassis: string): Promise<{
 
 // حذف موتر
 export async function deleteRegisteredVehicle(chassis: string): Promise<void> {
+  const token = localStorage.getItem('customer_token');
   const res = await fetch(`${API_BASE_URL}/registry/vehicles/${encodeURIComponent(chassis)}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
   });
   const data = await res.json();
   if (!data.success) throw new Error(data.message);
 }
 
 // افزودن سند به موتر موجود
-export async function addDocumentToVehicle(chassis: string, doc: {
+export async function addDocumentToVehicle(chassisNumber: string, data: {
   document_type: string;
   custom_type_name?: string;
   image_url?: string;
   text_content: string;
-}): Promise<VehicleDocument> {
-  const res = await fetch(`${API_BASE_URL}/registry/vehicles/${encodeURIComponent(chassis)}/documents`, {
+}): Promise<any> {
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/registry/vehicles/${encodeURIComponent(chassisNumber)}/documents`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(doc)
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(data)
   });
-  const data = await res.json();
-  if (!data.success) throw new Error(data.message);
-  return data.data;
+  const result = await res.json();
+  if (!result.success) throw new Error(result.message);
+  return result.data;
 }
 
 // ============================================
-// 4. اسناد گمرکی (Documents) - مستقیم
+// 4. اسناد گمرکی (Documents)
 // ============================================
 
-// دریافت لیست اسناد (با جستجو)
+// دریافت لیست اسناد
 export async function getDocuments(params?: { 
   q?: string; 
   chassis?: string; 
   type?: string;
+  customer_id?: string;
   limit?: number;
   page?: number;
 }): Promise<{ data: VehicleDocument[]; pagination: any }> {
@@ -347,10 +392,17 @@ export async function getDocuments(params?: {
   if (params?.q) searchParams.append('q', params.q);
   if (params?.chassis) searchParams.append('chassis', params.chassis);
   if (params?.type && params.type !== 'all') searchParams.append('type', params.type);
+  if (params?.customer_id) searchParams.append('customer_id', params.customer_id);
   if (params?.limit) searchParams.append('limit', params.limit.toString());
   if (params?.page) searchParams.append('page', params.page.toString());
   
-  const res = await fetch(`${API_BASE_URL}/documents?${searchParams}`);
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/documents?${searchParams}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
   const data = await res.json();
   if (!data.success) throw new Error(data.message);
   return { data: data.data, pagination: data.pagination };
@@ -358,7 +410,13 @@ export async function getDocuments(params?: {
 
 // دریافت یک سند با شناسه
 export async function getDocument(id: string): Promise<VehicleDocument> {
-  const res = await fetch(`${API_BASE_URL}/documents/${id}`);
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/documents/${id}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
   const data = await res.json();
   if (!data.success) throw new Error(data.message);
   return data.data;
@@ -366,7 +424,13 @@ export async function getDocument(id: string): Promise<VehicleDocument> {
 
 // دریافت همه اسناد یک موتر (بر اساس شماره شاسی)
 export async function getDocumentsByChassis(chassis: string): Promise<VehicleDocument[]> {
-  const res = await fetch(`${API_BASE_URL}/documents?chassis=${encodeURIComponent(chassis)}`);
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/documents?chassis=${encodeURIComponent(chassis)}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
   const data = await res.json();
   if (!data.success) throw new Error(data.message);
   return data.data;
@@ -379,10 +443,15 @@ export async function createDocument(doc: {
   custom_type_name?: string;
   text_content: string;
   image_url?: string;
+  customer_id?: string;
 }): Promise<VehicleDocument> {
+  const token = localStorage.getItem('customer_token');
   const res = await fetch(`${API_BASE_URL}/documents`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
     body: JSON.stringify(doc)
   });
   const data = await res.json();
@@ -392,9 +461,13 @@ export async function createDocument(doc: {
 
 // ویرایش سند
 export async function updateDocument(id: string, doc: Partial<VehicleDocument>): Promise<VehicleDocument> {
+  const token = localStorage.getItem('customer_token');
   const res = await fetch(`${API_BASE_URL}/documents/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
     body: JSON.stringify(doc)
   });
   const data = await res.json();
@@ -404,9 +477,128 @@ export async function updateDocument(id: string, doc: Partial<VehicleDocument>):
 
 // حذف سند
 export async function deleteDocument(id: string): Promise<void> {
+  const token = localStorage.getItem('customer_token');
   const res = await fetch(`${API_BASE_URL}/documents/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
   });
   const data = await res.json();
   if (!data.success) throw new Error(data.message);
+}
+
+// ============================================
+// 5. احراز هویت مشتری (Customer Auth)
+// ============================================
+
+// ثبت‌نام مشتری جدید
+export async function registerCustomer(data: {
+  customer_type: 'company' | 'individual';
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  username: string;
+  password: string;
+  registration_number?: string;
+  tax_number?: string;
+  national_id?: string;
+  father_name?: string;
+  passport_number?: string;
+}): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  const result = await res.json();
+  if (!result.success) throw new Error(result.message);
+  return result;
+}
+
+// ورود مشتری
+export async function loginCustomer(username: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const result = await res.json();
+  if (!result.success) throw new Error(result.message);
+  return result;
+}
+
+// دریافت اطلاعات مشتری جاری
+export async function getCurrentCustomer(): Promise<Customer> {
+  const token = localStorage.getItem('customer_token');
+  if (!token) {
+    throw new Error('دسترسی غیرمجاز. لطفاً وارد شوید.');
+  }
+  
+  const res = await fetch(`${API_BASE_URL}/auth/me`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  const data = await res.json();
+  if (!data.success) {
+    if (data.message === 'توکن نامعتبر است') {
+      localStorage.removeItem('customer_token');
+      localStorage.removeItem('customer_data');
+    }
+    throw new Error(data.message);
+  }
+  return data.data;
+}
+
+// دریافت لیست مشتریان (فقط ادمین)
+export async function getCustomers(): Promise<Customer[]> {
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/admin/users`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.message);
+  return data.data;
+}
+
+// دریافت لیست مشتریان فعال (فقط ادمین)
+export async function getActiveCustomers(): Promise<Customer[]> {
+  const customers = await getCustomers();
+  return customers.filter(c => c.status === 'active' && c.role === 'customer');
+}
+
+// تأیید کاربر (فقط ادمین)
+export async function approveUser(userId: string): Promise<void> {
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/approve`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.message);
+}
+
+// رد کردن کاربر (فقط ادمین)
+export async function rejectUser(userId: string, reason: string): Promise<void> {
+  const token = localStorage.getItem('customer_token');
+  const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/reject`, {
+    method: 'PUT',
+    headers: { 
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ reason })
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.message);
+}
+
+// خروج از حساب
+export function logoutCustomer() {
+  localStorage.removeItem('customer_token');
+  localStorage.removeItem('customer_data');
+  document.cookie = 'customer_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 }
