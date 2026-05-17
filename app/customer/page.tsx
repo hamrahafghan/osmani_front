@@ -220,16 +220,21 @@ export default function CustomerDashboardPage() {
     loadDocuments(page);
   };
 
+  // مشاهده جزئیات موتر
+  const handleViewVehicle = (chassisNumber: string) => {
+    router.push(`/customer/vehicles/${encodeURIComponent(chassisNumber)}`);
+  };
+
+  // مشاهده جزئیات سند
+  const handleViewDocument = (docId: string) => {
+    router.push(`/customer/documents/${docId}`);
+  };
+
   // تابع خروج - ریدایرکت به صفحه اصلی (/)
   const handleLogout = () => {
-    // پاک کردن localStorage
     localStorage.removeItem('customer_token');
     localStorage.removeItem('customer_data');
-    
-    // پاک کردن کوکی
     document.cookie = 'customer_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    
-    // ریدایرکت به صفحه اصلی (هوم)
     router.push('/');
   };
 
@@ -363,6 +368,7 @@ export default function CustomerDashboardPage() {
                         <th className="p-3 text-right">مدل</th>
                         <th className="p-3 text-right">سال</th>
                         <th className="p-3 text-right">وضعیت</th>
+                        <th className="p-3 text-right">عملیات</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -374,6 +380,14 @@ export default function CustomerDashboardPage() {
                           <td className="p-3">{vehicle.year}</td>
                           <td className="p-3">
                             <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">فعال</span>
+                          </td>
+                          <td className="p-3">
+                            <button
+                              onClick={() => handleViewVehicle(vehicle.chassis_number)}
+                              className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition flex items-center gap-1"
+                            >
+                              <i className="fas fa-eye"></i> مشاهده
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -437,6 +451,7 @@ export default function CustomerDashboardPage() {
                         <th className="p-3 text-right">شماره شاسی</th>
                         <th className="p-3 text-right">متن</th>
                         <th className="p-3 text-right">تاریخ</th>
+                        <th className="p-3 text-right">عملیات</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -452,7 +467,15 @@ export default function CustomerDashboardPage() {
                             {doc.text_content}
                           </td>
                           <td className="p-3 text-sm">{new Date(doc.createdAt).toLocaleDateString('fa-IR')}</td>
-                        </tr>
+                          <td className="p-3">
+                            <button
+                              onClick={() => handleViewDocument(doc._id)}
+                              className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition flex items-center gap-1"
+                            >
+                              <i className="fas fa-eye"></i> مشاهده
+                            </button>
+                          </td>
+                        </table>
                       ))}
                     </tbody>
                   </table>
