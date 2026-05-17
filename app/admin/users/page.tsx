@@ -2,17 +2,29 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { getCustomers, approveUser, rejectUser, type Customer } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+
+interface User {
+  _id: string;
+  name: string;
+  username: string;
+  email: string;
+  phone?: string;
+  customer_type: string;
+  status: string;
+  role: string;
+  createdAt: string;
+  rejection_reason?: string;
+}
 
 export default function AdminUsersPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const statusFilter = searchParams.get('status') || 'all';
-  
-  const [users, setUsers] = useState<Customer[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'active' | 'rejected' | 'blocked'>('all');
 
   useEffect(() => {
     loadUsers();
@@ -20,8 +32,22 @@ export default function AdminUsersPage() {
 
   const loadUsers = async () => {
     try {
-      const data = await getCustomers();
-      setUsers(data);
+      const token = localStorage.getItem('customer_token');
+      if (!token) {
+        router.push('/auth/login');
+        return;
+      }
+
+      const response = await fetch('https://osmani-backend.onrender.com/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setUsers(data.data);
+      } else {
+        console.error('Error:', data.message);
+      }
     } catch (error) {
       console.error('Error loading users:', error);
     } finally {
@@ -29,49 +55,64 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleApprove = async (userId: string) => {
-    if (confirm('آیا از تأیید این کاربر مطمئن هستید؟')) {
-      try {
-        await approveUser(userId);
+  const updateUserStatus = async (userId: string, action: string, reason?: string) => {
+    const token = localStorage.getItem('customer_token');
+    let url = `https://osmani-backend.onrender.com/api/admin/users/${userId}/${action}`;
+    let body: any = {};
+    
+    if (action === 'reject') {
+      body = { reason: reason || 'No reason provided' };
+    }
+    
+    try {
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(body)
+      });
+      
+      const data = await response.json();
+      if (data.success) {
         loadUsers();
-        alert('کاربر با موفقیت تأیید شد');
-      } catch (error) {
-        console.error('Error approving user:', error);
-        alert('خطا در تأیید کاربر');
+        setShowRejectModal(false);
+        setRejectionReason('');
+        alert(`کاربر با موفقیت ${action === 'approve' ? 'تأیید' : action === 'reject' ? 'رد' : action === 'block' ? 'مسدود' : 'فعال'} شد`);
+      } else {
+        alert(data.message || 'خطا در تغییر وضعیت کاربر');
       }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert('خطا در ارتباط با سرور');
     }
   };
 
-  const handleReject = async (userId: string) => {
-    const reason = prompt('لطفاً دلیل رد کردن را وارد کنید:');
-    if (reason) {
-      try {
-        await rejectUser(userId, reason);
+  const updateUserRole = async (userId: string, role: string) => {
+    const token = localStorage.getItem('customer_token');
+    
+    try {
+      const response = await fetch(`https://osmani-backend.onrender.com/api/admin/users/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ role })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
         loadUsers();
-        alert('کاربر با موفقیت رد شد');
-      } catch (error) {
-        console.error('Error rejecting user:', error);
-        alert('خطا در رد کاربر');
+        alert(`نقش کاربر با موفقیت به ${role === 'admin' ? 'ادمین' : 'مشتری'} تغییر کرد`);
+      } else {
+        alert(data.message || 'خطا در تغییر نقش کاربر');
       }
+    } catch (error) {
+      console.error('Error updating role:', error);
+      alert('خطا در ارتباط با سرور');
     }
-  };
-
-  const getFilteredUsers = () => {
-    let filtered = users;
-    
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(u => u.status === statusFilter);
-    }
-    
-    if (searchTerm) {
-      filtered = filtered.filter(u => 
-        u.name.includes(searchTerm) || 
-        u.username.includes(searchTerm) ||
-        u.email?.includes(searchTerm)
-      );
-    }
-    
-    return filtered;
   };
 
   const getStatusBadge = (status: string) => {
@@ -90,6 +131,16 @@ export default function AdminUsersPage() {
     return <span className={`px-2 py-1 rounded-full text-xs ${styles[status]}`}>{texts[status]}</span>;
   };
 
+  const filteredUsers = users.filter(user => filter === 'all' ? true : user.status === filter);
+
+  const stats = {
+    total: users.length,
+    pending: users.filter(u => u.status === 'pending').length,
+    active: users.filter(u => u.status === 'active').length,
+    rejected: users.filter(u => u.status === 'rejected').length,
+    blocked: users.filter(u => u.status === 'blocked').length,
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -98,56 +149,54 @@ export default function AdminUsersPage() {
     );
   }
 
-  const filteredUsers = getFilteredUsers();
-  const stats = {
-    total: users.length,
-    active: users.filter(u => u.status === 'active').length,
-    pending: users.filter(u => u.status === 'pending').length,
-    rejected: users.filter(u => u.status === 'rejected').length,
-  };
-
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#1a4a6a]">مدیریت کاربران</h1>
+        <h1 className="text-2xl font-bold text-[#1a4a6a]">👥 مدیریت کاربران</h1>
         <p className="text-gray-500 text-sm">مدیریت و تأیید کاربران سیستم</p>
       </div>
 
       {/* آمار */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-md p-4 border-r-4 border-blue-500">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+        <div 
+          onClick={() => setFilter('all')}
+          className={`bg-white rounded-xl shadow-md p-4 border-r-4 cursor-pointer transition ${filter === 'all' ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-300'}`}
+        >
           <div className="text-gray-500 text-sm">کل کاربران</div>
           <div className="text-2xl font-bold">{stats.total}</div>
           <i className="fas fa-users text-blue-500 text-2xl float-left mt-2"></i>
         </div>
-        <div className="bg-white rounded-xl shadow-md p-4 border-r-4 border-green-500">
-          <div className="text-gray-500 text-sm">کاربران فعال</div>
-          <div className="text-2xl font-bold text-green-600">{stats.active}</div>
-          <i className="fas fa-check-circle text-green-500 text-2xl float-left mt-2"></i>
-        </div>
-        <div className="bg-white rounded-xl shadow-md p-4 border-r-4 border-yellow-500">
+        <div 
+          onClick={() => setFilter('pending')}
+          className={`bg-white rounded-xl shadow-md p-4 border-r-4 cursor-pointer transition ${filter === 'pending' ? 'border-yellow-500 ring-2 ring-yellow-200' : 'border-gray-300'}`}
+        >
           <div className="text-gray-500 text-sm">در انتظار تأیید</div>
           <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
           <i className="fas fa-clock text-yellow-500 text-2xl float-left mt-2"></i>
         </div>
-        <div className="bg-white rounded-xl shadow-md p-4 border-r-4 border-red-500">
+        <div 
+          onClick={() => setFilter('active')}
+          className={`bg-white rounded-xl shadow-md p-4 border-r-4 cursor-pointer transition ${filter === 'active' ? 'border-green-500 ring-2 ring-green-200' : 'border-gray-300'}`}
+        >
+          <div className="text-gray-500 text-sm">کاربران فعال</div>
+          <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+          <i className="fas fa-check-circle text-green-500 text-2xl float-left mt-2"></i>
+        </div>
+        <div 
+          onClick={() => setFilter('rejected')}
+          className={`bg-white rounded-xl shadow-md p-4 border-r-4 cursor-pointer transition ${filter === 'rejected' ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-300'}`}
+        >
           <div className="text-gray-500 text-sm">رد شده</div>
           <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
           <i className="fas fa-times-circle text-red-500 text-2xl float-left mt-2"></i>
         </div>
-      </div>
-
-      {/* جستجو */}
-      <div className="bg-white rounded-xl shadow-lg p-4 mb-6">
-        <div className="relative">
-          <i className="fas fa-search absolute right-3 top-3 text-gray-400"></i>
-          <input
-            type="text"
-            placeholder="جستجوی کاربران (نام، نام کاربری، ایمیل)..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pr-10 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a4a6a]"
-          />
+        <div 
+          onClick={() => setFilter('blocked')}
+          className={`bg-white rounded-xl shadow-md p-4 border-r-4 cursor-pointer transition ${filter === 'blocked' ? 'border-gray-500 ring-2 ring-gray-200' : 'border-gray-300'}`}
+        >
+          <div className="text-gray-500 text-sm">مسدود شده</div>
+          <div className="text-2xl font-bold text-gray-600">{stats.blocked}</div>
+          <i className="fas fa-ban text-gray-500 text-2xl float-left mt-2"></i>
         </div>
       </div>
 
@@ -159,8 +208,8 @@ export default function AdminUsersPage() {
               <tr>
                 <th className="p-3 text-right">نام</th>
                 <th className="p-3 text-right">نام کاربری</th>
-                <th className="p-3 text-right">نوع</th>
                 <th className="p-3 text-right">ایمیل</th>
+                <th className="p-3 text-right">نوع</th>
                 <th className="p-3 text-right">نقش</th>
                 <th className="p-3 text-right">وضعیت</th>
                 <th className="p-3 text-right">عملیات</th>
@@ -171,6 +220,7 @@ export default function AdminUsersPage() {
                 <tr key={user._id} className="border-b hover:bg-gray-50">
                   <td className="p-3 font-medium">{user.name}</td>
                   <td className="p-3 text-gray-600">{user.username}</td>
+                  <td className="p-3 text-gray-600">{user.email || '-'}</td>
                   <td className="p-3">
                     {user.customer_type === 'company' ? (
                       <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs">
@@ -182,42 +232,68 @@ export default function AdminUsersPage() {
                       </span>
                     )}
                   </td>
-                  <td className="p-3 text-gray-600">{user.email || '-'}</td>
                   <td className="p-3">
-                    {user.role === 'admin' ? (
-                      <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs">
-                        <i className="fas fa-shield-alt ml-1"></i> ادمین
-                      </span>
-                    ) : (
-                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                        <i className="fas fa-user ml-1"></i> مشتری
-                      </span>
-                    )}
+                    <select
+                      value={user.role}
+                      onChange={(e) => updateUserRole(user._id, e.target.value)}
+                      className="text-sm border rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#1a4a6a]"
+                    >
+                      <option value="customer">مشتری</option>
+                      <option value="admin">ادمین</option>
+                    </select>
                   </td>
                   <td className="p-3">{getStatusBadge(user.status)}</td>
                   <td className="p-3">
-                    {user.status === 'pending' && (
-                      <div className="flex gap-2">
+                    <div className="flex gap-2">
+                      {user.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => updateUserStatus(user._id, 'approve')}
+                            className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 transition"
+                            title="تأیید"
+                          >
+                            <i className="fas fa-check"></i>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowRejectModal(true);
+                            }}
+                            className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition"
+                            title="رد"
+                          >
+                            <i className="fas fa-times"></i>
+                          </button>
+                        </>
+                      )}
+                      {user.status === 'active' && (
+                        <>
+                          <button
+                            onClick={() => updateUserStatus(user._id, 'block')}
+                            className="bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600 transition"
+                            title="مسدود"
+                          >
+                            <i className="fas fa-ban"></i>
+                          </button>
+                          <button
+                            onClick={() => updateUserRole(user._id, user.role === 'admin' ? 'customer' : 'admin')}
+                            className="bg-purple-500 text-white px-3 py-1 rounded text-sm hover:bg-purple-600 transition"
+                            title="تغییر نقش"
+                          >
+                            <i className="fas fa-exchange-alt"></i>
+                          </button>
+                        </>
+                      )}
+                      {user.status === 'blocked' && (
                         <button
-                          onClick={() => handleApprove(user._id)}
+                          onClick={() => updateUserStatus(user._id, 'activate')}
                           className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 transition"
+                          title="فعال کردن"
                         >
-                          <i className="fas fa-check ml-1"></i> تأیید
+                          <i className="fas fa-play"></i>
                         </button>
-                        <button
-                          onClick={() => handleReject(user._id)}
-                          className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition"
-                        >
-                          <i className="fas fa-times ml-1"></i> رد
-                        </button>
-                      </div>
-                    )}
-                    {user.status === 'active' && (
-                      <span className="text-green-600 text-sm">✓ تأیید شده</span>
-                    )}
-                    {user.status === 'rejected' && (
-                      <span className="text-red-600 text-sm">✗ رد شده</span>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -232,6 +308,45 @@ export default function AdminUsersPage() {
           </div>
         )}
       </div>
+
+      {/* مودال رد کاربر */}
+      {showRejectModal && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4">رد کاربر</h2>
+            <p className="text-gray-600 mb-4">
+              آیا از رد کردن <span className="font-bold">{selectedUser.name}</span> مطمئن هستید؟
+            </p>
+            <div className="mb-4">
+              <label className="block font-semibold mb-2">دلیل رد (اختیاری)</label>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a4a6a]"
+                rows={3}
+                placeholder="دلیل رد کردن را وارد کنید..."
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => updateUserStatus(selectedUser._id, 'reject', rejectionReason)}
+                className="flex-1 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition"
+              >
+                رد کردن
+              </button>
+              <button
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectionReason('');
+                }}
+                className="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400 transition"
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
